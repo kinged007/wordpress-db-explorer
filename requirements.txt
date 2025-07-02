@@ -1,0 +1,7 @@
+SQLAlchemy
+rich
+inquirer
+python-dotenv
+pymysql
+pytest
+pytest-cov
