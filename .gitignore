@@ -5,6 +5,7 @@
 .env.local
 .env.*.local
 *.env
+!sample.env
 
 # Python
 __pycache__/
@@ -74,15 +75,13 @@ logs/
 log/
 
 # Backup Files
-backups/*.json
-backups/*.sql
+backups/*
+!backups/.gitkeep
 *.backup
 *.bak
 
-# Export Files (optional - you may want to track some exports)
-exports/*.csv
-exports/*.json
-exports/*.xlsx
+# Export Files
+exports/*
 # Keep the exports directory structure
 !exports/.gitkeep
 
@@ -142,6 +141,7 @@ yarn-error.log*
 local_*
 dev_*
 test_*
+!tests/test_*
 debug_*
 
 # Documentation build files

@@ -277,6 +277,8 @@ The application uses a `.env` file for configuration:
 | `DB_NAME` | WordPress database name | `wordpress_db` |
 | `TABLE_PREFIX` | WordPress table prefix | `wp_` |
 
+**Important**: Always ensure your `.env` file is not committed to version control as it contains sensitive database credentials.
+
 ### Upgrading Dependencies
 
 To upgrade the application dependencies:
@@ -289,18 +291,6 @@ To upgrade the application dependencies:
 source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install --upgrade -r requirements.txt
 ```
-
-### Version Control
-
-The project includes a comprehensive `.gitignore` file that excludes:
-
-- **Environment files**: `.env`, virtual environments, IDE files
-- **Generated files**: `__pycache__`, coverage reports, test artifacts
-- **Sensitive data**: Database credentials, backup files, logs
-- **Export files**: CSV/JSON exports (while preserving directory structure)
-- **OS files**: `.DS_Store`, `Thumbs.db`, temporary files
-
-**Important**: Always ensure your `.env` file is not committed to version control as it contains sensitive database credentials.
 
 ## 🧪 Testing
 
@@ -332,11 +322,12 @@ pytest tests/ -v
 - **Integration Tests**: Test component interactions
 - **Coverage Reports**: HTML and terminal coverage reports available
 
+For detailed test documentation, see [tests/README.md](tests/README.md).
+
 ## 📁 Project Structure
 
 ```
 wordpress-db-explorer/
-├── .gitignore           # Git ignore rules
 ├── main.py              # Application entry point
 ├── run.sh               # Setup and launch script (macOS/Linux)
 ├── run_tests.sh         # Test runner script
@@ -345,20 +336,13 @@ wordpress-db-explorer/
 ├── sample.env           # Environment template
 ├── .env                 # Your database configuration (create this)
 ├── exports/             # Export output directory
-│   └── .gitkeep         # Preserves directory structure in git
-├── htmlcov/             # Coverage reports (auto-generated)
 ├── src/
 │   ├── db_utils.py      # Database connection utilities
 │   ├── search_utils.py  # Search functionality
 │   ├── search_replace.py # Search and replace functionality
 │   ├── export_menu.py   # Export menu interface
 │   └── export_utils.py  # Export functionality
-├── tests/
-│   ├── __init__.py      # Tests package
-│   ├── README.md        # Test documentation
-│   ├── conftest.py      # Shared test fixtures
-│   ├── test_search_replace.py  # Search & replace tests
-│   └── test_error_handling.py  # Error handling tests
+├── tests/               # Test suite containing unit and integration tests
 └── venv/                # Virtual environment (auto-created)
 ```
 
