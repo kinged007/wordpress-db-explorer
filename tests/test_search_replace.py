@@ -253,3 +253,120 @@ class TestSearchReplaceSession:
 
         assert "example.com" in summary2, "Summary should contain search term"
         assert "content:" in summary2, "Summary should show matching column"
+
+    @pytest.mark.unit
+    def test_serialized_data_single_line_format(self):
+        """Test that serialized data is formatted as single-line strings without line breaks"""
+        # Test JSON data formatting
+        json_data = '{"config": {"host": "old-server.com", "backup": "backup.old-server.com"}, "urls": ["https://old-server.com"]}'
+        result = _safe_replace_in_serialized_data(json_data, "old-server.com", "new-server.com")
+
+        # Verify no line breaks in result
+        assert '\n' not in result, "JSON result should not contain line breaks"
+        assert '\r' not in result, "JSON result should not contain carriage returns"
+
+        # Verify it's still valid JSON
+        import json
+        parsed = json.loads(result)
+        assert parsed["config"]["host"] == "new-server.com"
+
+        # Test PHP serialized data formatting
+        php_data = 'a:2:{s:4:"name";s:11:"old-server.com";s:3:"url";s:20:"https://old-server.com";}'
+        result = _safe_replace_in_serialized_data(php_data, "old-server.com", "new-server.com")
+
+        # Verify no line breaks in result
+        assert '\n' not in result, "PHP serialized result should not contain line breaks"
+        assert '\r' not in result, "PHP serialized result should not contain carriage returns"
+
+        # Verify replacement worked
+        assert "new-server.com" in result
+
+    @pytest.mark.unit
+    def test_wordpress_serialized_with_html_quotes(self):
+        """Test WordPress-style serialized data with unescaped quotes in HTML content"""
+        # This is the type of data that WordPress actually stores
+        wp_data = 's:277:"<iframe id="3stepvideo" src="https://player.vimeo.com/video/155821260?title=0&byline=0&portrait=0" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen height="342" width="300" style="max-width: 600px; max-height: 342px; height: 342px;width:100%;"></iframe>";'
+
+        # Test replacement that changes length
+        result = _safe_replace_in_serialized_data(wp_data, "vimeo.com", "newdomain.com")
+
+        # Verify the replacement worked
+        assert "newdomain.com" in result
+        assert "vimeo.com" not in result
+
+        # Verify the length was updated correctly (277 + 4 = 281)
+        assert "s:281:" in result
+
+        # Verify the structure is still valid
+        assert result.startswith('s:281:"')
+        assert result.endswith('";')
+
+        # Extract the content and verify its length
+        content_start = result.find('"') + 1
+        content_end = result.rfind('"')
+        content = result[content_start:content_end]
+        assert len(content) == 281
+
+    @pytest.mark.unit
+    def test_wordpress_complex_array_with_html(self):
+        """Test complex WordPress array with HTML content"""
+        wp_array = 'a:1:{s:7:"widgets";a:1:{i:0;a:5:{s:5:"title";s:0:"";s:4:"text";s:277:"<iframe id="3stepvideo" src="https://player.vimeo.com/video/155821260?title=0&byline=0&portrait=0" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen height="342" width="300" style="max-width: 600px; max-height: 342px; height: 342px;width:100%;"></iframe>";s:6:"filter";b:0;s:6:"visual";b:0;s:11:"option_name";s:11:"widget_text";}}}'
+
+        # Test replacement
+        result = _safe_replace_in_serialized_data(wp_array, "vimeo.com", "newdomain.com")
+
+        # Verify the replacement worked
+        assert "newdomain.com" in result
+        assert "vimeo.com" not in result
+
+        # Verify the length was updated correctly
+        assert "s:281:" in result  # 277 + 4 = 281
+
+        # Verify the array structure is maintained
+        assert result.startswith('a:1:{')
+        assert result.endswith('}')
+
+        # Verify other elements are unchanged
+        assert 's:7:"widgets"' in result
+        assert 's:11:"widget_text"' in result
+        assert 'b:0;' in result  # boolean values should be unchanged
+
+    @pytest.mark.unit
+    def test_malformed_serialized_data_with_incorrect_lengths(self):
+        """Test handling of malformed serialized data with incorrect string lengths"""
+        # Test a simple case where replacement changes length
+        malformed_data = 's:16:"hello world test";'
+
+        # Test replacement
+        result = _safe_replace_in_serialized_data(malformed_data, "test", "example")
+
+        # Verify the replacement worked
+        assert "example" in result
+        assert "test" not in result
+
+        # Verify the length was updated correctly ("test" -> "example" adds 3 chars: 16 + 3 = 19)
+        assert "s:19:" in result  # "hello world example" is 19 characters
+
+        # Verify the structure is still valid
+        assert result.startswith('s:19:"')
+        assert result.endswith('";')
+
+    @pytest.mark.unit
+    def test_severely_malformed_serialized_data(self):
+        """Test handling of severely malformed serialized data"""
+        # This simulates data where the length is completely wrong
+        malformed_data = 's:50:"hello world";'  # Length says 50 but content is only 11 chars
+
+        # Test replacement
+        result = _safe_replace_in_serialized_data(malformed_data, "world", "universe")
+
+        # Verify the replacement worked
+        assert "universe" in result
+        assert "world" not in result
+
+        # Verify the length was corrected ("hello universe" is 14 characters)
+        assert "s:14:" in result
+
+        # Verify the structure is still valid
+        assert result.startswith('s:14:"')
+        assert result.endswith('";')

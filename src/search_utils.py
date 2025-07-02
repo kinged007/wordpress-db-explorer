@@ -7,17 +7,35 @@ from sqlalchemy import inspect
 from sqlalchemy.sql import text
 from dotenv import load_dotenv
 
-from src.db_utils import get_db_engine
+from src.db_utils import get_db_engine, get_db_inspector, check_db_connection_with_friendly_error
 
 console = Console()
 
 # Ensure environment variables are loaded
 load_dotenv(override=True)
 
-# Global database connection objects
-engine = get_db_engine()
-inspector = inspect(engine)
+# Global variables for lazy database connection
+engine = None
+inspector = None
 table_prefix = os.getenv('TABLE_PREFIX', '')
+
+def get_engine():
+    """Get database engine with error handling."""
+    global engine
+    if engine is None:
+        if not check_db_connection_with_friendly_error():
+            raise Exception("Database connection failed")
+        engine = get_db_engine()
+    return engine
+
+def get_inspector():
+    """Get database inspector with error handling."""
+    global inspector
+    if inspector is None:
+        if not check_db_connection_with_friendly_error():
+            raise Exception("Database connection failed")
+        inspector = get_db_inspector()
+    return inspector
 
 # Common table names
 users_table = f"{table_prefix}users"
@@ -74,11 +92,11 @@ def search_users(export_mode=False):
     """
     try:
         # Check if tables exist
-        if users_table not in inspector.get_table_names():
+        if users_table not in get_inspector().get_table_names():
             console.print(f"❌ Table {users_table} not found!", style="bold red")
             return None if export_mode else None
-            
-        if usermeta_table not in inspector.get_table_names():
+
+        if usermeta_table not in get_inspector().get_table_names():
             console.print(f"❌ Table {usermeta_table} not found!", style="bold red")
             return None if export_mode else None
         
@@ -130,7 +148,7 @@ def search_users(export_mode=False):
             # Build WHERE clause based on selected field
             if filter_field == "All fields (general search)":
                 # Get column names
-                columns_info = inspector.get_columns(users_table)
+                columns_info = get_inspector().get_columns(users_table)
                 column_names = [col['name'] for col in columns_info]
                 
                 # Original behavior - search all fields
@@ -217,7 +235,7 @@ def search_users(export_mode=False):
                     return None if export_mode else None
             
             # Execute search
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 # Count query
                 count_sql = text(f"SELECT COUNT(*) FROM `{users_table}` WHERE {where_clause}")
                 count_result = connection.execute(count_sql, params)
@@ -279,7 +297,7 @@ def search_users(export_mode=False):
             meta_prefix = console.input("[bold blue]Enter prefix to filter meta keys (leave empty for all): [/bold blue]")
             
             # Get available meta keys from usermeta table with filter
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 if meta_prefix:
                     meta_keys_sql = text(f"SELECT DISTINCT meta_key FROM `{usermeta_table}` WHERE meta_key LIKE :prefix ORDER BY meta_key LIMIT 500")
                     meta_keys_result = connection.execute(meta_keys_sql, {"prefix": f"{meta_prefix}%"})
@@ -313,7 +331,7 @@ def search_users(export_mode=False):
                 return None if export_mode else None
             
             # Show a sample value for the selected meta key
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 sample_sql = text(f"""
                     SELECT um.user_id, um.meta_value 
                     FROM `{usermeta_table}` um
@@ -372,7 +390,7 @@ def search_users(export_mode=False):
                 params = in_clause_params
                 
             # Execute the meta search query
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 # Join users and usermeta tables
                 query = f"""
                     SELECT {'u.*' if export_mode else 'u.ID, u.user_login, u.user_email, u.user_registered, u.user_nicename, u.display_name'}
@@ -531,11 +549,11 @@ def search_posts(post_type, export_mode=False, display_name=None):
     
     try:
         # Check if tables exist
-        if posts_table not in inspector.get_table_names():
+        if posts_table not in get_inspector().get_table_names():
             console.print(f"❌ Table {posts_table} not found!", style="bold red")
             return None if export_mode else None
-            
-        if postmeta_table not in inspector.get_table_names():
+
+        if postmeta_table not in get_inspector().get_table_names():
             console.print(f"❌ Table {postmeta_table} not found!", style="bold red")
             return None if export_mode else None
         
@@ -594,7 +612,7 @@ def search_posts(post_type, export_mode=False, display_name=None):
             
             if filter_field == "All fields (general search)":
                 # Get column names
-                columns_info = inspector.get_columns(posts_table)
+                columns_info = get_inspector().get_columns(posts_table)
                 column_names = [col['name'] for col in columns_info]
                 
                 # Search all fields
@@ -724,7 +742,7 @@ def search_posts(post_type, export_mode=False, display_name=None):
                     return None if export_mode else None
             
             # Execute search
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 # Count query
                 count_sql = text(f"SELECT COUNT(*) FROM `{posts_table}` WHERE {where_clause}")
                 count_result = connection.execute(count_sql, params)
@@ -834,7 +852,7 @@ def search_posts(post_type, export_mode=False, display_name=None):
             meta_prefix = console.input("[bold blue]Enter prefix to filter meta keys (leave empty for all): [/bold blue]")
             
             # Get available meta keys from postmeta table with filter
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 if meta_prefix:
                     meta_keys_sql = text(f"""
                         SELECT DISTINCT meta_key FROM `{postmeta_table}` pm 
@@ -897,7 +915,7 @@ def search_posts(post_type, export_mode=False, display_name=None):
                 return None if export_mode else None
             
             # Show a sample value for the selected meta key
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 sample_sql = text(f"""
                     SELECT pm.post_id, pm.meta_value 
                     FROM `{postmeta_table}` pm
@@ -958,7 +976,7 @@ def search_posts(post_type, export_mode=False, display_name=None):
                 params = in_clause_params
                 
             # Execute the meta search query
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 # Join posts and postmeta tables
                 query = f"""
                     SELECT p.* 
@@ -1147,7 +1165,7 @@ def get_available_post_types():
     standard_types = []
     
     try:
-        with engine.connect() as connection:
+        with get_engine().connect() as connection:
             # Get distinct post types from posts table
             post_types_sql = text(f"""
                 SELECT DISTINCT post_type 
@@ -1171,7 +1189,7 @@ def general_search():
         table_results = {}
 
         # Get all table names and filter by prefix
-        available_tables = [name for name in inspector.get_table_names() if name.startswith(table_prefix)]
+        available_tables = [name for name in get_inspector().get_table_names() if name.startswith(table_prefix)]
         
         # If no tables match the prefix, inform the user
         if not available_tables:
@@ -1184,9 +1202,9 @@ def general_search():
         for table_name in available_tables:
             try:
                 # Use raw SQL for the search with SQL LIKE for pattern matching
-                with engine.connect() as connection:
+                with get_engine().connect() as connection:
                     # Get all column names for the table
-                    columns_info = inspector.get_columns(table_name)
+                    columns_info = get_inspector().get_columns(table_name)
                     column_names = [col['name'] for col in columns_info]
                     
                     # Build a WHERE clause to search across all columns with OR conditions
@@ -1257,7 +1275,7 @@ def view_results(engine, table_results, search_term):
         
     try:
         # Get table schema to retrieve column names
-        columns_info = inspector.get_columns(selected_table)
+        columns_info = get_inspector().get_columns(selected_table)
         column_names = [col['name'] for col in columns_info]
         
         # Build a WHERE clause to search across all columns with OR conditions
@@ -1268,7 +1286,7 @@ def view_results(engine, table_results, search_term):
         where_clause = " OR ".join(where_conditions)
         
         # Query to get matching rows (limited to 100)
-        with engine.connect() as connection:
+        with get_engine().connect() as connection:
             select_sql = text(f"SELECT * FROM `{selected_table}` WHERE {where_clause} LIMIT 100")
             result = connection.execute(select_sql, {"search_term": f"%{search_term}%"})
             

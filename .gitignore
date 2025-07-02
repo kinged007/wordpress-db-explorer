@@ -75,15 +75,12 @@ logs/
 log/
 
 # Backup Files
-backups/*
-!backups/.gitkeep
+backups/
 *.backup
 *.bak
 
 # Export Files
-exports/*
-# Keep the exports directory structure
-!exports/.gitkeep
+exports/
 
 # Temporary Files
 tmp/

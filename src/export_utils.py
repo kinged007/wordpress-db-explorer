@@ -9,8 +9,8 @@ from rich.progress import Progress
 from sqlalchemy.sql import text
 from dotenv import load_dotenv
 
-from src.db_utils import get_db_engine
-from src.search_utils import search_users, search_orders, search_coupons, search_regular_posts, engine, table_prefix
+from src.db_utils import get_db_engine, check_db_connection_with_friendly_error
+from src.search_utils import search_users, search_orders, search_coupons, search_regular_posts, get_engine, table_prefix
 
 console = Console()
 load_dotenv(override=True)
@@ -178,7 +178,7 @@ def export_users():
         # Initialize the export file
         if export_format == "CSV":
             # For CSV, we need to write the header first
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 # Get base column names 
                 limit_query = f"{query} LIMIT 1"
                 header_result = connection.execute(text(limit_query), params)
@@ -215,7 +215,7 @@ def export_users():
             paginated_query = f"{query} LIMIT :batch_size OFFSET :offset"
             
             while records_exported < count:
-                with engine.connect() as connection:
+                with get_engine().connect() as connection:
                     # Execute query with pagination
                     batch_result = connection.execute(
                         text(paginated_query),
@@ -368,7 +368,7 @@ def export_posts(post_type, display_name=None):
         # Initialize the export file
         if export_format == "CSV":
             # For CSV, we need to write the header first
-            with engine.connect() as connection:
+            with get_engine().connect() as connection:
                 # Get base column names 
                 limit_query = f"{query} LIMIT 1"
                 header_result = connection.execute(text(limit_query), params)
@@ -405,7 +405,7 @@ def export_posts(post_type, display_name=None):
             paginated_query = f"{query} LIMIT :batch_size OFFSET :offset"
             
             while records_exported < count:
-                with engine.connect() as connection:
+                with get_engine().connect() as connection:
                     # Execute query with pagination
                     batch_result = connection.execute(
                         text(paginated_query),

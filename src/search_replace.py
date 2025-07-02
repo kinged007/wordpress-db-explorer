@@ -12,15 +12,39 @@ from sqlalchemy import inspect
 from sqlalchemy.sql import text
 from dotenv import load_dotenv
 
-from src.db_utils import get_db_engine
+try:
+    import phpserialize
+    PHPSERIALIZE_AVAILABLE = True
+except ImportError:
+    PHPSERIALIZE_AVAILABLE = False
+
+from src.db_utils import get_db_engine, get_db_inspector, check_db_connection_with_friendly_error
 
 console = Console()
 load_dotenv(override=True)
 
-# Global database connection objects
-engine = get_db_engine()
-inspector = inspect(engine)
+# Global variables for lazy database connection
+engine = None
+inspector = None
 table_prefix = os.getenv('TABLE_PREFIX', '')
+
+def get_engine():
+    """Get database engine with error handling."""
+    global engine
+    if engine is None:
+        if not check_db_connection_with_friendly_error():
+            raise Exception("Database connection failed")
+        engine = get_db_engine()
+    return engine
+
+def get_inspector():
+    """Get database inspector with error handling."""
+    global inspector
+    if inspector is None:
+        if not check_db_connection_with_friendly_error():
+            raise Exception("Database connection failed")
+        inspector = get_db_inspector()
+    return inspector
 
 # Create backups directory
 BACKUPS_DIR = Path("backups")
@@ -96,23 +120,35 @@ def search_and_replace_menu():
 
 def _get_search_term(session: SearchReplaceSession) -> bool:
     """Get the search term from user"""
-    questions = [
-        inquirer.Text(
-            "search_term",
-            message="Enter the text to search for",
-            default=session.search_term
-        )
-    ]
-    
-    answers = inquirer.prompt(questions)
-    if not answers or not answers["search_term"].strip():
+    try:
+        # Use Rich's input with default value
+        default_text = session.search_term if session.search_term else ""
+        prompt_text = f"Enter the text to search for"
+        if default_text:
+            prompt_text += f" [default: {default_text}]"
+        prompt_text += ": "
+
+        search_term = console.input(prompt_text)
+
+        # Use default if empty input
+        if not search_term.strip() and default_text:
+            search_term = default_text
+
+        search_term = search_term.strip()
+        if not search_term:
+            console.print("❌ Search term cannot be empty!", style="bold red")
+            return False
+
+        session.search_term = search_term
+        # Reset dependent data when search term changes
+        session.search_results = {}
+        session.selected_rows = {}
+
+        console.print(f"✅ Search term set to: '{search_term}'", style="bold green")
+        return True
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n❌ Operation cancelled by user", style="bold yellow")
         return False
-        
-    session.search_term = answers["search_term"].strip()
-    # Reset dependent data when search term changes
-    session.search_results = {}
-    session.selected_rows = {}
-    return True
 
 def _show_main_menu(session: SearchReplaceSession) -> str:
     """Show the main menu and return user choice"""
@@ -173,7 +209,7 @@ def _select_tables(session: SearchReplaceSession):
     """Allow user to select tables for search and replace"""
     try:
         # Get all tables from database
-        all_tables = inspector.get_table_names()
+        all_tables = get_inspector().get_table_names()
         
         if not all_tables:
             console.print("❌ No tables found in database!", style="bold red")
@@ -236,14 +272,14 @@ def _find_matches(session: SearchReplaceSession):
     total_matches = 0
     
     try:
-        with engine.connect() as connection:
+        with get_engine().connect() as connection:
             for table_name in session.selected_tables:
                 try:
                     console.print(f"Searching {table_name}...", style="dim")
 
                     # Get table columns with better error handling
                     try:
-                        columns = inspector.get_columns(table_name)
+                        columns = get_inspector().get_columns(table_name)
                     except Exception as col_error:
                         console.print(f"  ⚠️  Could not get columns for {table_name}: {col_error}", style="yellow")
                         continue
@@ -302,7 +338,7 @@ def _find_matches(session: SearchReplaceSession):
         for table_name, rows in session.search_results.items():
             try:
                 # Assume first column is the primary key
-                columns = inspector.get_columns(table_name)
+                columns = get_inspector().get_columns(table_name)
                 if columns:
                     pk_column = columns[0]['name']  # Usually 'id'
                     session.selected_rows[table_name] = [getattr(row, pk_column) for row in rows]
@@ -532,7 +568,7 @@ def _create_highlighted_snippet(value: str, search_term: str, max_length: int = 
 def _deselect_specific_rows(session: SearchReplaceSession, table_name: str, rows: List):
     """Allow user to deselect specific rows"""
     # Get primary key column
-    columns = inspector.get_columns(table_name)
+    columns = get_inspector().get_columns(table_name)
     pk_column = columns[0]['name']
 
     # Create choices for row selection
@@ -573,7 +609,7 @@ def _deselect_specific_rows(session: SearchReplaceSession, table_name: str, rows
 def _select_only_specific_rows(session: SearchReplaceSession, table_name: str, rows: List):
     """Allow user to select only specific rows"""
     # Get primary key column
-    columns = inspector.get_columns(table_name)
+    columns = get_inspector().get_columns(table_name)
     pk_column = columns[0]['name']
 
     # Create choices for row selection
@@ -633,20 +669,28 @@ def _create_row_summary(row, search_term: str) -> str:
 
 def _get_replace_term(session: SearchReplaceSession) -> bool:
     """Get the replacement text from user"""
-    questions = [
-        inquirer.Text(
-            "replace_term",
-            message="Enter the replacement text",
-            default=session.replace_term
-        )
-    ]
+    try:
+        # Use Rich's input with default value
+        default_text = session.replace_term if session.replace_term else ""
+        prompt_text = f"Enter the replacement text"
+        if default_text:
+            prompt_text += f" [default: {default_text}]"
+        prompt_text += ": "
 
-    answers = inquirer.prompt(questions)
-    if answers is None:
+        replace_term = console.input(prompt_text)
+
+        # Use default if empty input
+        if not replace_term and default_text:
+            replace_term = default_text
+
+        # Note: Empty replacement text is allowed (for deletion)
+        session.replace_term = replace_term
+
+        console.print(f"✅ Replace text set to: '{replace_term}'", style="bold green")
+        return True
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n❌ Operation cancelled by user", style="bold yellow")
         return False
-
-    session.replace_term = answers["replace_term"]
-    return True
 
 def _execute_replace(session: SearchReplaceSession, dry_run: bool = True):
     """Execute the search and replace operation"""
@@ -709,7 +753,7 @@ def _execute_replace(session: SearchReplaceSession, dry_run: bool = True):
 
     # Execute the replacement
     try:
-        with engine.connect() as connection:
+        with get_engine().connect() as connection:
             transaction = connection.begin()
 
             try:
@@ -723,7 +767,7 @@ def _execute_replace(session: SearchReplaceSession, dry_run: bool = True):
 
                     # Get table columns with better error handling
                     try:
-                        columns = inspector.get_columns(table_name)
+                        columns = get_inspector().get_columns(table_name)
                         if not columns:
                             console.print(f"  ⚠️  No columns found in {table_name}, skipping", style="yellow")
                             continue
@@ -834,6 +878,14 @@ def _safe_replace_in_serialized_data(original_value: str, search_term: str, repl
 
     # Check if this looks like PHP serialized data
     if _is_php_serialized(original_value):
+        # Try phpserialize library first if available
+        if PHPSERIALIZE_AVAILABLE:
+            result = _replace_in_php_serialized_with_phpserialize(original_value, search_term, replace_term)
+            if result is not None:
+                return result
+            # If phpserialize fails, fall back to our custom approach
+            console.print("⚠️  phpserialize failed, falling back to custom parser", style="yellow")
+
         return _replace_in_php_serialized(original_value, search_term, replace_term)
 
     # Check if this looks like JSON
@@ -877,35 +929,209 @@ def _is_json_data(value: str) -> bool:
 def _replace_in_php_serialized(serialized_data: str, search_term: str, replace_term: str) -> str:
     """Safely replace text in PHP serialized data"""
     try:
-        # For PHP serialized data, we need to be very careful
-        # We'll do a simple string replacement but then validate the result
+        # For WordPress serialized data, we need to handle the fact that it may contain
+        # unescaped quotes within string content. We'll use a more robust approach.
 
         # First, try simple replacement
         new_data = serialized_data.replace(search_term, replace_term)
 
         # If the replacement changed the length of strings, we need to update the length indicators
         if search_term != replace_term and len(search_term) != len(replace_term):
-            new_data = _fix_php_serialized_lengths(new_data)
+            new_data = _fix_php_serialized_lengths_wordpress(new_data)
 
         return new_data
 
-    except Exception:
+    except Exception as e:
         # If anything goes wrong, return original data
-        console.print("⚠️  Warning: Could not safely replace in serialized data, skipping", style="yellow")
+        console.print(f"⚠️  Warning: Could not safely replace in serialized data ({e}), skipping", style="yellow")
         return serialized_data
 
 def _fix_php_serialized_lengths(serialized_data: str) -> str:
-    """Fix string length indicators in PHP serialized data"""
-    def replace_string_length(match):
-        length_str = match.group(1)
-        content = match.group(2)
-        # Use character length, not byte length for simplicity
-        actual_length = len(content)
-        return f's:{actual_length}:"{content}";'
+    """Fix string length indicators in PHP serialized data using proper parsing"""
+    result = []
+    i = 0
 
-    # Pattern to match s:length:"content"; in PHP serialized data
-    pattern = r's:(\d+):"([^"]*)";'
-    return re.sub(pattern, replace_string_length, serialized_data)
+    while i < len(serialized_data):
+        # Look for string pattern s:length:"
+        if serialized_data[i:i+2] == 's:':
+            # Find the length part
+            length_start = i + 2
+            length_end = serialized_data.find(':', length_start)
+
+            if length_end == -1:
+                # Not a valid string pattern, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            try:
+                declared_length = int(serialized_data[length_start:length_end])
+            except ValueError:
+                # Not a valid length, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # Check if this is followed by a quote
+            quote_pos = length_end + 1
+            if quote_pos >= len(serialized_data) or serialized_data[quote_pos] != '"':
+                # Not a string pattern, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # Find the actual end of the string content by looking for the pattern ";
+            # that appears after the content, but we need to be careful about quotes within the content
+            content_start = quote_pos + 1
+
+            # We need to find the actual end of the string content
+            # Since the length might be wrong due to replacements, we need to find the closing pattern
+            # Look for the next occurrence of "; that could be the end of this string
+            search_pos = content_start
+            content_end = -1
+
+            # Try to find the end by looking for "; patterns and validating them
+            while search_pos < len(serialized_data):
+                quote_pos_candidate = serialized_data.find('";', search_pos)
+                if quote_pos_candidate == -1:
+                    break
+
+                # Check if this could be a valid end by looking at what comes after
+                after_semicolon = quote_pos_candidate + 2
+                if after_semicolon >= len(serialized_data):
+                    # End of string, this must be it
+                    content_end = quote_pos_candidate
+                    break
+
+                next_char = serialized_data[after_semicolon]
+                # Valid characters that can follow a serialized string
+                if next_char in 's:aiboN}':  # start of next element or end of array/object
+                    content_end = quote_pos_candidate
+                    break
+
+                # Continue searching
+                search_pos = quote_pos_candidate + 1
+
+            if content_end == -1:
+                # Couldn't find a valid end, just copy the character and continue
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # Extract the actual content
+            content = serialized_data[content_start:content_end]
+            actual_length = len(content)
+
+            # Rebuild the string with correct length
+            result.append(f's:{actual_length}:"{content}";')
+
+            # Move past this entire string
+            i = content_end + 2  # +2 for the "; at the end
+        else:
+            # Not a string pattern, just copy the character
+            result.append(serialized_data[i])
+            i += 1
+
+    return ''.join(result)
+
+def _fix_php_serialized_lengths_wordpress(serialized_data: str) -> str:
+    """
+    Fix string length indicators in WordPress PHP serialized data.
+    WordPress serialized data often contains unescaped quotes within strings,
+    so we need a more robust approach.
+    """
+    result = []
+    i = 0
+
+    while i < len(serialized_data):
+        # Look for string pattern s:length:"
+        if i + 1 < len(serialized_data) and serialized_data[i:i+2] == 's:':
+            # Find the length part
+            length_start = i + 2
+            length_end = serialized_data.find(':', length_start)
+
+            if length_end == -1:
+                # Not a valid string pattern, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            try:
+                declared_length = int(serialized_data[length_start:length_end])
+            except ValueError:
+                # Not a valid length, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # Check if this is followed by a quote
+            quote_pos = length_end + 1
+            if quote_pos >= len(serialized_data) or serialized_data[quote_pos] != '"':
+                # Not a string pattern, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # For WordPress data, we need to find the actual end by looking for the pattern
+            # that indicates the end of this serialized element
+            content_start = quote_pos + 1
+
+            # Look for the end pattern: "; followed by a valid next element or end
+            # We'll scan forward and look for "; patterns that could be valid endings
+            search_pos = content_start
+            content_end = -1
+
+            while search_pos < len(serialized_data):
+                # Look for "; pattern
+                quote_semicolon_pos = serialized_data.find('";', search_pos)
+                if quote_semicolon_pos == -1:
+                    break
+
+                # Check what comes after the semicolon
+                after_pos = quote_semicolon_pos + 2
+                if after_pos >= len(serialized_data):
+                    # End of data, this must be the end
+                    content_end = quote_semicolon_pos
+                    break
+
+                # Check if what follows looks like a valid serialized element
+                remaining = serialized_data[after_pos:]
+                if (remaining.startswith('s:') or  # string
+                    remaining.startswith('i:') or  # integer
+                    remaining.startswith('b:') or  # boolean
+                    remaining.startswith('d:') or  # double
+                    remaining.startswith('a:') or  # array
+                    remaining.startswith('O:') or  # object
+                    remaining.startswith('N;') or  # null
+                    remaining.startswith('}') or   # end of array/object
+                    remaining.startswith('}')):    # end of structure
+                    content_end = quote_semicolon_pos
+                    break
+
+                # Continue searching
+                search_pos = quote_semicolon_pos + 1
+
+            if content_end == -1:
+                # Couldn't find a valid end, just copy the character and continue
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # Extract the actual content
+            content = serialized_data[content_start:content_end]
+            actual_length = len(content)
+
+            # Rebuild the string with correct length
+            result.append(f's:{actual_length}:"{content}";')
+
+            # Move past this entire string
+            i = content_end + 2  # +2 for the "; at the end
+        else:
+            # Not a string pattern, just copy the character
+            result.append(serialized_data[i])
+            i += 1
+
+    return ''.join(result)
 
 def _replace_in_json_data(json_data: str, search_term: str, replace_term: str) -> str:
     """Safely replace text in JSON data"""
@@ -913,7 +1139,8 @@ def _replace_in_json_data(json_data: str, search_term: str, replace_term: str) -
         # Parse JSON, replace in string values, and re-serialize
         data = json.loads(json_data)
         modified_data = _replace_in_json_object(data, search_term, replace_term)
-        return json.dumps(modified_data, ensure_ascii=False)
+        # Use compact separators to ensure single-line output without spaces
+        return json.dumps(modified_data, ensure_ascii=False, separators=(',', ':'))
     except Exception:
         # If anything goes wrong, fall back to simple replacement
         return json_data.replace(search_term, replace_term)
@@ -1005,7 +1232,7 @@ def _undo_last_operation():
 
     # Execute undo
     try:
-        with engine.connect() as connection:
+        with get_engine().connect() as connection:
             transaction = connection.begin()
 
             try:
@@ -1018,7 +1245,7 @@ def _undo_last_operation():
                     original_value = change["original_value"]
 
                     # Get primary key column name
-                    columns = inspector.get_columns(table_name)
+                    columns = get_inspector().get_columns(table_name)
                     pk_column = columns[0]['name']
 
                     # Restore original value
@@ -1043,3 +1270,111 @@ def _undo_last_operation():
 
     except Exception as e:
         console.print(f"❌ Error during undo operation: {e}", style="bold red")
+
+def _replace_in_php_serialized_with_phpserialize(serialized_data: str, search_term: str, replace_term: str) -> Optional[str]:
+    """
+    Replace text in PHP serialized data using the phpserialize library.
+    This is more reliable than manual parsing but requires the phpserialize package.
+    Returns None if the operation fails.
+    """
+    if not PHPSERIALIZE_AVAILABLE:
+        return None
+
+    try:
+        # First, try to fix any obvious length issues in the data
+        fixed_data = _fix_malformed_serialized_data(serialized_data)
+
+        # Unserialize the data
+        try:
+            data = phpserialize.loads(fixed_data.encode('utf-8'))
+        except Exception:
+            # If the fixed data doesn't work, try the original
+            data = phpserialize.loads(serialized_data.encode('utf-8'))
+
+        # Recursively replace text in the data structure
+        def replace_in_data(obj, search, replace):
+            if isinstance(obj, dict):
+                return {k: replace_in_data(v, search, replace) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [replace_in_data(item, search, replace) for item in obj]
+            elif isinstance(obj, bytes):
+                return obj.decode('utf-8').replace(search, replace).encode('utf-8')
+            elif isinstance(obj, str):
+                return obj.replace(search, replace)
+            else:
+                return obj
+
+        # Perform replacement
+        modified_data = replace_in_data(data, search_term, replace_term)
+
+        # Serialize back to string
+        result = phpserialize.dumps(modified_data).decode('utf-8')
+
+        return result
+
+    except Exception as e:
+        console.print(f"⚠️  phpserialize replacement failed: {e}", style="yellow")
+        return None
+
+def _fix_malformed_serialized_data(serialized_data: str) -> str:
+    """
+    Attempt to fix common issues in malformed PHP serialized data,
+    particularly incorrect string lengths.
+    """
+    result = []
+    i = 0
+
+    while i < len(serialized_data):
+        # Look for string pattern s:length:"
+        if i + 1 < len(serialized_data) and serialized_data[i:i+2] == 's:':
+            # Find the length part
+            length_start = i + 2
+            length_end = serialized_data.find(':', length_start)
+
+            if length_end == -1:
+                # Not a valid string pattern, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            try:
+                declared_length = int(serialized_data[length_start:length_end])
+            except ValueError:
+                # Not a valid length, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # Check if this is followed by a quote
+            quote_pos = length_end + 1
+            if quote_pos >= len(serialized_data) or serialized_data[quote_pos] != '"':
+                # Not a string pattern, just copy the character
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # Find the actual end of the string by looking for "; pattern
+            content_start = quote_pos + 1
+            quote_semicolon_pos = serialized_data.find('";', content_start)
+
+            if quote_semicolon_pos == -1:
+                # Can't find the end, just copy what we have
+                result.append(serialized_data[i])
+                i += 1
+                continue
+
+            # Extract the actual content
+            actual_content = serialized_data[content_start:quote_semicolon_pos]
+            actual_length = len(actual_content)
+
+            # Rebuild the string with correct length
+            result.append(f's:{actual_length}:"{actual_content}";')
+
+            # Move past this entire string
+            i = quote_semicolon_pos + 2  # +2 for the "; at the end
+        else:
+            # Not a string pattern, just copy the character
+            result.append(serialized_data[i])
+            i += 1
+
+    return ''.join(result)
