@@ -40,29 +40,45 @@ python main.py
 - Use "All WordPress Tables" for comprehensive search
 - Or select specific tables for targeted operations
 
-### 4. Preview Results
+### 4. Find Matches
+- Execute search across selected tables
+- Filters are applied during search for better performance
+- View total match counts per table
+
+### 5. Preview Results
 - View search results across selected tables
 - See highlighted matches in context
 - Review total match counts per table
 
-### 5. Configure Row Selection
-- **Keep all rows selected**: Modify all found matches
+### 6. View Table Data (Optional)
+- See complete row data for all columns
+- Search terms highlighted in matching columns
+- Full context view for better decision making
+
+### 7. Configure Filters (Optional)
+- **By Another Column Value**: Filter results by specific column criteria
+- **Exact Match**: Column value must exactly match filter value
+- **Contains Match**: Column value contains the filter text
+- **Example**: Filter `wp_postmeta` where `meta_key = "_elementor_field"`
+
+### 8. Configure Row Selection (optional)
+- **Keep all rows selected**: Modify all found matches (default)
 - **Deselect specific rows**: Exclude certain rows from modification
 - **Select only specific rows**: Choose only specific rows to modify
 - **Skip table entirely**: Exclude entire tables from the operation
 
-### 6. Set Replace Text
+### 9. Set Replace Text
 - Enter the replacement text
 - Can be empty string for deletion
 - Supports any text including special characters
 
-### 7. Execute Operation
+### 10. Execute Operation
 - **Dry Run First**: Always test with dry run mode
 - **Review Summary**: Check the operation summary
 - **Final Confirmation**: Confirm the actual replacement
 - **Monitor Progress**: Watch real-time progress updates
 
-### 8. Undo if Needed
+### 11. Undo if Needed
 - Access undo functionality from the main menu
 - Select from available backup files
 - Restore original values completely
@@ -72,12 +88,14 @@ python main.py
 ```
 1. Search Term: "old-domain.com"
 2. Tables: wp_posts, wp_options, wp_postmeta
-3. Preview: 45 matches found across 3 tables
-4. Row Selection: Deselect 2 rows (file paths)
-5. Replace With: "new-domain.com"
-6. Dry Run: Review 43 planned changes
-7. Execute: Apply changes with backup
-8. Result: 43 successful replacements
+3. Find Matches: 45 matches found across 3 tables
+4. Filter: wp_postmeta where meta_key = "custom_field"
+5. Preview: 12 filtered matches found
+6. Row Selection: Deselect 2 rows (file paths)
+7. Replace With: "new-domain.com"
+8. Dry Run: Review 10 planned changes
+9. Execute: Apply changes with backup
+10. Result: 10 successful replacements
 ```
 
 ## 🔍 Supported Data Types
@@ -132,11 +150,67 @@ s:20:"https://example.com";
 - **Replace**: `New Product Name`
 - **Tables**: wp_posts, wp_postmeta
 
+### Filtered Updates
+- **Scenario**: Update Elementor field values only
+- **Search**: `old-value`
+- **Replace**: `new-value`
+- **Tables**: wp_postmeta
+- **Filter**: meta_key = "_elementor_field" (exact match)
+
 ### Path Corrections
 - **Scenario**: Fixing file paths after server migration
 - **Search**: `/old/path/`
 - **Replace**: `/new/path/`
 - **Tables**: wp_posts, wp_options, wp_postmeta
+
+## 🎨 Working with Page Builders
+
+### Overview
+Page builders like **Elementor** and **SiteOrigin Page Builder** store their content data differently than standard WordPress posts. Understanding how they work is crucial for successful search and replace operations.
+
+### How Page Builders Store Data
+- **Primary Storage**: Most page builder content is stored in the `wp_postmeta` table
+- **Serialized Format**: Data is typically stored as PHP serialized arrays or JSON
+- **Meta Keys**: Each page builder uses specific meta keys (e.g., `_elementor_data`, `panels_data`)
+- **Complex Structure**: Content is nested within widget/element configurations
+
+### Best Practices for Page Builder Content
+
+#### 1. Use Filters for Precision
+```
+Tables: wp_postmeta
+Filter: meta_key = "_elementor_data" (exact match)
+Search: "old-domain.com"
+Replace: "new-domain.com"
+```
+
+#### 2. Always Use View Table Data
+- Review the complete row data before making changes
+- Understand the structure of the serialized content
+- Identify which specific elements contain your search term
+
+#### 3. Start with Dry Run
+- Page builder data is complex and interconnected
+- Test changes thoroughly before applying
+- Verify the serialized data structure remains intact
+
+### Tested Page Builders
+- ✅ **Elementor**: Simple substring replacements work reliably
+- ✅ **SiteOrigin Page Builder**: Basic content updates function correctly
+- ⚠️ **Limited Testing**: Extensive testing has not been performed
+
+### Important Considerations
+- **Review Carefully**: Always examine matched rows and content structure
+- **Backup Essential**: Page builder data corruption can break entire pages
+- **Test Thoroughly**: Check page functionality after any changes
+- **Report Issues**: If you encounter problems, please [submit an issue](https://github.com/kinged007/wordpress-db-explorer/issues)
+- **Contribute**: Improvements and pull requests are welcome
+
+### Common Page Builder Meta Keys
+- **Elementor**: `_elementor_data`, `_elementor_page_settings`
+- **SiteOrigin**: `panels_data`
+- **Beaver Builder**: `_fl_builder_data`
+- **Divi**: `_et_pb_page_layout`
 
 ## ⚠️ Important Safety Guidelines
 
