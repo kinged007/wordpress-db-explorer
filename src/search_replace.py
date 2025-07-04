@@ -52,13 +52,15 @@ BACKUPS_DIR.mkdir(exist_ok=True)
 
 class SearchReplaceSession:
     """Manages a search and replace session with undo capabilities"""
-    
+
     def __init__(self):
         self.search_term = ""
         self.replace_term = ""
         self.selected_tables = []
         self.search_results = {}  # table_name: [rows with matches]
+        self.filtered_results = {}  # table_name: [rows after applying filters]
         self.selected_rows = {}   # table_name: [row_ids to modify]
+        self.filters = {}  # table_name: {"column": "column_name", "value": "filter_value"}
         self.backup_file = None
         self.changes_made = []
         
@@ -105,6 +107,10 @@ def search_and_replace_menu():
             _find_matches(session)
         elif choice == "Preview Matches":
             _preview_matches(session)
+        elif choice == "View Table Data":
+            _view_table_data(session)
+        elif choice == "Filters":
+            _configure_filters(session)
         elif choice == "Configure Row Selection":
             _configure_row_selection(session)
         elif choice == "Set Replace Text":
@@ -162,8 +168,12 @@ def _show_main_menu(session: SearchReplaceSession) -> str:
         
     if session.search_results:
         total_matches = sum(len(results) for results in session.search_results.values())
-        status_info.append(f"Total Matches Found: {total_matches}")
-    
+        if session.filters:
+            status_info.append(f"Matches Found (with filters): {total_matches}")
+            status_info.append(f"Active Filters: {len(session.filters)} table(s)")
+        else:
+            status_info.append(f"Total Matches Found: {total_matches}")
+
     if session.replace_term:
         status_info.append(f"Replace With: '{session.replace_term}'")
     
@@ -176,6 +186,8 @@ def _show_main_menu(session: SearchReplaceSession) -> str:
         "Select Tables",
         "Find Matches",
         "Preview Matches",
+        "View Table Data",
+        "Filters",
         "Configure Row Selection",
         "Set Replace Text",
         "Execute Replace (Dry Run)",
@@ -186,10 +198,10 @@ def _show_main_menu(session: SearchReplaceSession) -> str:
     
     # Disable certain options based on current state
     if not session.selected_tables:
-        choices = [c for c in choices if c not in ["Find Matches", "Preview Matches", "Configure Row Selection", "Execute Replace (Dry Run)", "Execute Replace"]]
+        choices = [c for c in choices if c not in ["Find Matches", "Preview Matches", "View Table Data", "Filters", "Configure Row Selection", "Execute Replace (Dry Run)", "Execute Replace"]]
 
     if not session.search_results:
-        choices = [c for c in choices if c not in ["Preview Matches", "Configure Row Selection", "Execute Replace (Dry Run)", "Execute Replace"]]
+        choices = [c for c in choices if c not in ["Preview Matches", "View Table Data", "Configure Row Selection", "Execute Replace (Dry Run)", "Execute Replace"]]
         
     if not session.replace_term:
         choices = [c for c in choices if c not in ["Execute Replace (Dry Run)", "Execute Replace"]]
@@ -247,9 +259,11 @@ def _select_tables(session: SearchReplaceSession):
         else:
             session.selected_tables = [table for table in selected if table not in ["All WordPress Tables", "None"]]
         
-        # Reset search results when tables change
+        # Reset search results and filters when tables change
         session.search_results = {}
+        session.filtered_results = {}
         session.selected_rows = {}
+        session.filters = {}
         
         console.print(f"✅ Selected {len(session.selected_tables)} tables", style="bold green")
         
@@ -313,11 +327,30 @@ def _find_matches(session: SearchReplaceSession):
                     for col in text_columns:
                         where_conditions.append(f"`{col}` LIKE :search_term")
 
-                    where_clause = " OR ".join(where_conditions)
+                    search_where_clause = " OR ".join(where_conditions)
+
+                    # Add filter conditions if filters exist for this table
+                    query_params = {"search_term": f"%{session.search_term}%"}
+                    final_where_clause = search_where_clause
+
+                    if table_name in session.filters:
+                        filter_info = session.filters[table_name]
+                        filter_column = filter_info["column"]
+                        filter_value = filter_info["value"]
+                        match_type = filter_info.get("match_type", "Exact match")
+
+                        if match_type == "Exact match":
+                            filter_condition = f"`{filter_column}` = :filter_value"
+                            query_params["filter_value"] = filter_value
+                        else:  # Contains match
+                            filter_condition = f"`{filter_column}` LIKE :filter_value"
+                            query_params["filter_value"] = f"%{filter_value}%"
+
+                        final_where_clause = f"({search_where_clause}) AND ({filter_condition})"
 
                     # Execute search query
-                    query = text(f"SELECT * FROM `{table_name}` WHERE {where_clause}")
-                    result = connection.execute(query, {"search_term": f"%{session.search_term}%"})
+                    query = text(f"SELECT * FROM `{table_name}` WHERE {final_where_clause}")
+                    result = connection.execute(query, query_params)
 
                     rows = result.fetchall()
                     if rows:
@@ -333,9 +366,17 @@ def _find_matches(session: SearchReplaceSession):
 
         console.print(f"\n📊 Search Complete: {total_matches} total matches found across {len(session.search_results)} tables", style="bold green")
 
+        # Show filter information if filters were applied during search
+        if session.filters:
+            applied_filters = [table for table in session.filters.keys() if table in session.search_results]
+            if applied_filters:
+                console.print(f"🔍 Filters applied during search for {len(applied_filters)} table(s)", style="blue")
+
         # Initialize selected rows (all rows selected by default)
         session.selected_rows = {}
-        for table_name, rows in session.search_results.items():
+        results_for_selection = session.search_results
+
+        for table_name, rows in results_for_selection.items():
             try:
                 # Assume first column is the primary key
                 columns = get_inspector().get_columns(table_name)
@@ -360,19 +401,395 @@ def _preview_matches(session: SearchReplaceSession):
 
     console.print(f"\n📋 Preview of matches for '{session.search_term}'", style="bold blue")
 
-    total_matches = sum(len(rows) for rows in session.search_results.values())
-    console.print(f"📊 Total: {total_matches} matches across {len(session.search_results)} tables", style="bold green")
+    # Search results already include applied filters
+    results_to_show = session.search_results
+
+    # Show filter status
+    if session.filters:
+        console.print("🔍 Active Filters:", style="bold yellow")
+        for table_name, filter_info in session.filters.items():
+            match_type = filter_info.get("match_type", "Exact match")
+            match_symbol = "=" if match_type == "Exact match" else "contains"
+            console.print(f"  • {table_name}: {filter_info['column']} {match_symbol} '{filter_info['value']}'", style="yellow")
+        console.print()
+
+    total_matches = sum(len(rows) for rows in results_to_show.values())
+    total_tables = len([table for table, rows in results_to_show.items() if rows])
+    console.print(f"📊 Total: {total_matches} matches across {total_tables} tables", style="bold green")
+
+    # Note: Filters are now applied during search, so search_results already reflect filtered data
+
     console.print()
 
     # Show preview for each table
-    for table_name, rows in session.search_results.items():
+    for table_name, rows in results_to_show.items():
+        if not rows:  # Skip tables with no matches after filtering
+            continue
+
         console.print(f"🗂️  Table: {table_name} ({len(rows)} matches)", style="bold cyan")
+
+        # Show filter info for this table if applied
+        if table_name in session.filters:
+            filter_info = session.filters[table_name]
+            match_type = filter_info.get("match_type", "Exact match")
+            match_symbol = "=" if match_type == "Exact match" else "contains"
+            console.print(f"   🔍 Filtered by: {filter_info['column']} {match_symbol} '{filter_info['value']}'", style="yellow")
 
         # Show preview of matches with highlighted search terms
         _show_table_matches_preview(table_name, rows, session.search_term)
         console.print()
 
-    console.print("💡 Use 'Configure Row Selection' to choose specific rows for replacement", style="dim")
+    console.print("💡 Use 'View Table Data' for complete row details, 'Filters' to narrow results, or 'Configure Row Selection' to choose specific rows", style="dim")
+
+def _configure_filters(session: SearchReplaceSession):
+    """Configure filters to narrow down search results"""
+    if not session.search_results:
+        console.print("❌ No search results available!", style="bold red")
+        return
+
+    console.print("\n🔍 Configure Filters", style="bold blue")
+    console.print("Apply additional filters to narrow down your search results", style="dim")
+
+    # Show current filter status
+    if session.filters:
+        console.print("\n📋 Current Filters:", style="bold")
+        for table_name, filter_info in session.filters.items():
+            match_type = filter_info.get("match_type", "Exact match")
+            match_symbol = "=" if match_type == "Exact match" else "contains"
+            console.print(f"  • {table_name}: {filter_info['column']} {match_symbol} '{filter_info['value']}'", style="green")
+    else:
+        console.print("\n📋 No filters currently applied", style="dim")
+
+    # Show available filter options
+    choices = [
+        "By Another Column Value",
+        "Clear All Filters",
+        "Back to Main Menu"
+    ]
+
+    questions = [
+        inquirer.List(
+            "filter_type",
+            message="Select filter type",
+            choices=choices
+        )
+    ]
+
+    answers = inquirer.prompt(questions)
+    if not answers or answers["filter_type"] == "Back to Main Menu":
+        return
+
+    if answers["filter_type"] == "Clear All Filters":
+        session.filters = {}
+        session.filtered_results = {}
+        console.print("✅ All filters cleared", style="bold green")
+        console.print("💡 Run 'Find Matches' again to search without filters", style="yellow")
+        return
+
+    if answers["filter_type"] == "By Another Column Value":
+        _configure_column_value_filter(session)
+
+def _configure_column_value_filter(session: SearchReplaceSession):
+    """Configure filtering by another column value"""
+    # Get tables that have search results
+    tables_with_results = list(session.search_results.keys())
+
+    if not tables_with_results:
+        console.print("❌ No tables with search results available!", style="bold red")
+        return
+
+    # Let user select which table to configure filter for
+    questions = [
+        inquirer.List(
+            "table_name",
+            message="Select table to configure filter for",
+            choices=tables_with_results + ["Back"]
+        )
+    ]
+
+    answers = inquirer.prompt(questions)
+    if not answers or answers["table_name"] == "Back":
+        return
+
+    table_name = answers["table_name"]
+
+    # Get column information for the selected table
+    try:
+        columns_info = get_inspector().get_columns(table_name)
+        column_names = [col['name'] for col in columns_info]
+
+        # Include all columns (including ID/primary key)
+        if column_names:
+            column_choices = column_names
+        else:
+            console.print(f"❌ Could not get column information for {table_name}", style="bold red")
+            return
+
+    except Exception as e:
+        console.print(f"❌ Error getting column information: {e}", style="bold red")
+        return
+
+    # Let user select which column to filter by
+    questions = [
+        inquirer.List(
+            "column_name",
+            message=f"Select column in {table_name} to filter by",
+            choices=column_choices + ["Back"]
+        )
+    ]
+
+    answers = inquirer.prompt(questions)
+    if not answers or answers["column_name"] == "Back":
+        return
+
+    column_name = answers["column_name"]
+
+    # Ask for match type (exact or contains)
+    match_questions = [
+        inquirer.List(
+            "match_type",
+            message=f"How should the filter match values in '{column_name}'?",
+            choices=[
+                "Exact match",
+                "Contains (partial match)",
+                "Back"
+            ]
+        )
+    ]
+
+    match_answers = inquirer.prompt(match_questions)
+    if not match_answers or match_answers["match_type"] == "Back":
+        return
+
+    match_type = match_answers["match_type"]
+
+    # Get the filter value from user
+    try:
+        from rich.prompt import Prompt
+        filter_value = Prompt.ask(f"[bold blue]Enter value to filter by in column '{column_name}' ({match_type.lower()})[/bold blue]")
+
+        if not filter_value.strip():
+            console.print("❌ Filter value cannot be empty", style="bold red")
+            return
+
+        # Apply the filter
+        session.filters[table_name] = {
+            "column": column_name,
+            "value": filter_value.strip(),
+            "match_type": match_type
+        }
+
+        match_symbol = "=" if match_type == "Exact match" else "contains"
+        console.print(f"✅ Filter configured: {table_name}.{column_name} {match_symbol} '{filter_value.strip()}'", style="bold green")
+        console.print("💡 Run 'Find Matches' again to apply the new filter to your search", style="yellow")
+
+    except Exception as e:
+        console.print(f"❌ Error configuring filter: {e}", style="bold red")
+
+def _view_table_data(session: SearchReplaceSession):
+    """View complete table data for rows containing search matches"""
+    if not session.search_results:
+        console.print("❌ No search results available! Run 'Find Matches' first.", style="bold red")
+        return
+
+    # Get tables that have search results
+    tables_with_results = list(session.search_results.keys())
+
+    if not tables_with_results:
+        console.print("❌ No tables with search results available!", style="bold red")
+        return
+
+    console.print("\n📋 View Table Data", style="bold blue")
+    console.print("View complete row data for matches found in your search", style="dim")
+
+    # Let user select which table to view
+    questions = [
+        inquirer.List(
+            "table_name",
+            message="Select table to view complete data for",
+            choices=tables_with_results + ["Back"]
+        )
+    ]
+
+    answers = inquirer.prompt(questions)
+    if not answers or answers["table_name"] == "Back":
+        return
+
+    table_name = answers["table_name"]
+    rows = session.search_results[table_name]
+
+    if not rows:
+        console.print(f"❌ No rows found in {table_name}", style="bold red")
+        return
+
+    console.print(f"\n🗂️  Complete Table Data: {table_name}", style="bold cyan")
+    console.print(f"Showing {len(rows)} rows that contain '{session.search_term}'", style="dim")
+
+    # Show filter info if applied
+    if table_name in session.filters:
+        filter_info = session.filters[table_name]
+        match_type = filter_info.get("match_type", "Exact match")
+        match_symbol = "=" if match_type == "Exact match" else "contains"
+        console.print(f"🔍 Filtered by: {filter_info['column']} {match_symbol} '{filter_info['value']}'", style="yellow")
+
+    console.print()
+
+    try:
+        # Get all column information
+        columns_info = get_inspector().get_columns(table_name)
+        all_columns = [col['name'] for col in columns_info]
+
+        if not all_columns:
+            console.print(f"❌ Could not get column information for {table_name}", style="bold red")
+            return
+
+        # Create a comprehensive table view
+        _show_complete_table_view(table_name, rows, all_columns, session.search_term)
+
+    except Exception as e:
+        console.print(f"❌ Error viewing table data: {e}", style="bold red")
+
+def _show_complete_table_view(table_name: str, rows: List, all_columns: List[str], search_term: str):
+    """Show a complete table view with all columns for matching rows"""
+    if not rows or not all_columns:
+        return
+
+    # Create table with all columns
+    table = Table(
+        title=f"Complete Data View: {table_name}",
+        expand=True,  # Use full terminal width
+        show_lines=True
+    )
+
+    # Add columns to the table
+    for col_name in all_columns:
+        # Make the column wider for better readability
+        table.add_column(col_name, style="cyan", overflow="fold", max_width=30)
+
+    # Process each row
+    for row in rows[:20]:  # Limit to first 20 rows to avoid overwhelming output
+        row_data = []
+
+        for col_name in all_columns:
+            try:
+                value = getattr(row, col_name, '')
+                if value is None:
+                    cell_content = Text("NULL", style="dim italic")
+                else:
+                    value_str = str(value)
+
+                    # Check if this column contains the search term
+                    if search_term.lower() in value_str.lower():
+                        # Highlight the search term in this column
+                        cell_content = _create_highlighted_snippet(value_str, search_term, max_length=100)
+                    else:
+                        # Show the value as-is, but truncate if too long
+                        if len(value_str) > 50:
+                            cell_content = Text(value_str[:47] + "...", style="dim")
+                        else:
+                            cell_content = Text(value_str)
+
+                row_data.append(cell_content)
+
+            except Exception:
+                row_data.append(Text("ERROR", style="red"))
+
+        table.add_row(*row_data)
+
+    console.print(table)
+
+    # Show pagination info if there are more rows
+    if len(rows) > 20:
+        console.print(f"\n📄 Showing first 20 of {len(rows)} total rows", style="dim")
+        console.print("💡 Use 'Configure Row Selection' to work with specific rows", style="dim")
+
+def _create_highlighted_snippet(text: str, search_term: str, max_length: int = 100) -> Text:
+    """Create a highlighted text snippet showing the search term"""
+    if not text or not search_term:
+        return Text(text[:max_length] if text else "")
+
+    text_lower = text.lower()
+    search_lower = search_term.lower()
+
+    # Find the first occurrence of the search term
+    pos = text_lower.find(search_lower)
+    if pos == -1:
+        # Search term not found, return truncated text
+        return Text(text[:max_length] + ("..." if len(text) > max_length else ""))
+
+    # Calculate snippet boundaries
+    snippet_start = max(0, pos - 20)
+    snippet_end = min(len(text), pos + len(search_term) + 20)
+
+    # If we need to truncate, ensure we don't exceed max_length
+    if snippet_end - snippet_start > max_length:
+        snippet_end = snippet_start + max_length
+
+    snippet = text[snippet_start:snippet_end]
+
+    # Create highlighted text
+    highlighted = Text()
+
+    # Add prefix ellipsis if we started after the beginning
+    if snippet_start > 0:
+        highlighted.append("...", style="dim")
+
+    # Find and highlight all occurrences of the search term in the snippet
+    snippet_lower = snippet.lower()
+    start = 0
+
+    while True:
+        pos = snippet_lower.find(search_lower, start)
+        if pos == -1:
+            # Add remaining text
+            highlighted.append(snippet[start:])
+            break
+
+        # Add text before match
+        highlighted.append(snippet[start:pos])
+        # Add highlighted match
+        highlighted.append(snippet[pos:pos + len(search_term)], style="bold red on yellow")
+        start = pos + len(search_term)
+
+    # Add suffix ellipsis if we ended before the end
+    if snippet_end < len(text):
+        highlighted.append("...", style="dim")
+
+    return highlighted
+
+def _apply_filters(session: SearchReplaceSession):
+    """Apply configured filters to search results"""
+    session.filtered_results = {}
+
+    for table_name, rows in session.search_results.items():
+        if table_name in session.filters:
+            filter_info = session.filters[table_name]
+            column_name = filter_info["column"]
+            filter_value = filter_info["value"]
+            match_type = filter_info.get("match_type", "Exact match")  # Default to exact match for backward compatibility
+
+            # Filter rows based on column value and match type
+            filtered_rows = []
+            for row in rows:
+                try:
+                    row_value = getattr(row, column_name, None)
+                    if row_value is not None:
+                        row_value_str = str(row_value)
+
+                        if match_type == "Exact match":
+                            if row_value_str == filter_value:
+                                filtered_rows.append(row)
+                        elif match_type == "Contains (partial match)":
+                            if filter_value.lower() in row_value_str.lower():
+                                filtered_rows.append(row)
+                except Exception:
+                    # Skip rows where we can't get the column value
+                    continue
+
+            session.filtered_results[table_name] = filtered_rows
+        else:
+            # No filter for this table, use all results
+            session.filtered_results[table_name] = rows
 
 def _configure_row_selection(session: SearchReplaceSession):
     """Allow user to configure which specific rows to modify"""
@@ -380,6 +797,7 @@ def _configure_row_selection(session: SearchReplaceSession):
         console.print("❌ No search results available!", style="bold red")
         return
 
+    # Search results already include applied filters
     for table_name, rows in session.search_results.items():
         console.print(f"\n📋 Configuring row selection for table: {table_name}", style="bold blue")
         console.print(f"Found {len(rows)} rows with matches", style="dim")
@@ -714,6 +1132,14 @@ def _execute_replace(session: SearchReplaceSession, dry_run: bool = True):
     console.print(f"  Search Term: '{session.search_term}'", style="dim")
     console.print(f"  Replace With: '{session.replace_term}'", style="dim")
     console.print(f"  Total Operations: {total_operations}", style="dim")
+
+    # Show filter information if filters are applied
+    if session.filters:
+        console.print(f"  Active Filters: {len(session.filters)} table(s)", style="dim")
+        for table_name, filter_info in session.filters.items():
+            match_type = filter_info.get("match_type", "Exact match")
+            match_symbol = "=" if match_type == "Exact match" else "contains"
+            console.print(f"    • {table_name}: {filter_info['column']} {match_symbol} '{filter_info['value']}'", style="dim")
 
     summary_table = Table(
         title="Tables and Rows to Modify",

@@ -1,4 +1,5 @@
 import os
+from urllib.parse import quote_plus
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.sql import text  # Import text for raw SQL queries
 from rich.console import Console
@@ -51,7 +52,12 @@ def get_db_engine():
         db_password = os.getenv('DB_PASSWORD')
         db_name = os.getenv('DB_NAME')
 
-        db_url = f"mysql+pymysql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+        # URL-encode the credentials to handle special characters
+        encoded_user = quote_plus(db_user)
+        encoded_password = quote_plus(db_password)
+        encoded_db_name = quote_plus(db_name)
+
+        db_url = f"mysql+pymysql://{encoded_user}:{encoded_password}@{db_host}:{db_port}/{encoded_db_name}"
         _engine = create_engine(db_url)
         return _engine
     except Exception as e:
