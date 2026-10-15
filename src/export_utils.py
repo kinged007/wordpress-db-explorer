@@ -1,16 +1,16 @@
-import os
-import json
 import csv
 import datetime
+import json
 from pathlib import Path
+
 import inquirer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.progress import Progress
 from sqlalchemy.sql import text
-from dotenv import load_dotenv
 
-from src.db_utils import get_db_engine, check_db_connection_with_friendly_error
-from src.search_utils import search_users, search_orders, search_coupons, search_regular_posts, get_engine, table_prefix
+from src.db_utils import get_db_engine
+from src.search_utils import get_engine, search_coupons, search_orders, search_regular_posts, search_users
 
 console = Console()
 load_dotenv(override=True)

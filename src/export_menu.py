@@ -1,8 +1,7 @@
 import inquirer
 from rich.console import Console
-from src.export_utils import (
-    export_users, export_custom_post_type, export_posts
-)
+
+from src.export_utils import export_custom_post_type, export_posts, export_users
 
 console = Console()
 
