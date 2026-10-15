@@ -1,9 +1,10 @@
 import os
 from urllib.parse import quote_plus
+
+from dotenv import load_dotenv  # Import dotenv
+from rich.console import Console
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.sql import text  # Import text for raw SQL queries
-from rich.console import Console
-from dotenv import load_dotenv  # Import dotenv
 
 console = Console()
 

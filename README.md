@@ -1,393 +1,136 @@
 # WordPress DB Explorer
 
-A powerful command-line tool for exploring, searching, and exporting data from WordPress databases. This application provides an intuitive interface to interact with WordPress databases, including WooCommerce data, with advanced search and export capabilities.
+[![CI](https://github.com/kinged007/wordpress-db-explorer/actions/workflows/ci.yml/badge.svg)](https://github.com/kinged007/wordpress-db-explorer/actions/workflows/ci.yml)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## 🚀 Features
+> **Maintenance note:** This project is no longer actively maintained. It remains available as a reference implementation for WordPress database exploration and safe search-replace. Issues and PRs are welcome but may not be reviewed promptly.
 
-### Database Operations
-- **Connection Testing**: Verify database connectivity before performing operations
-- **Multi-table Search**: Search across WordPress core tables and custom post types
-- **Advanced Filtering**: Filter data by specific fields, date ranges, and custom criteria
+A CLI for exploring, searching, and safely search-replacing across WordPress/MySQL databases — serialized-data and WooCommerce aware. Handles PHP serialized arrays, JSON, and WordPress-specific content with dry-run, preview, and undo safety.
 
-### Search Capabilities
-- **User Search**: Find WordPress users by username, email, role, or any user field
-- **Post Search**: Search WordPress posts, pages, and custom post types
-- **WooCommerce Integration**:
-  - Search orders by status, customer, date range, or order details
-  - Search coupons by code, type, usage, or expiration
-- **General Search**: Perform broad searches across all fields in any table
-- **Custom Post Types**: Automatically detect and search custom post types
+## Features
 
-### Search & Replace
-- **Multi-table Search & Replace**: Find and replace text across multiple WordPress tables
-- **Safe Preview**: Preview matches with highlighted search terms before making changes
-- **Full-Width Tables**: Optimized table display using full terminal width for better content visibility
-- **Selective Replacement**: Choose specific rows and tables for replacement
-- **Interactive Workflow**: Step-by-step guided process with clear status indicators
-- **Dry Run Mode**: Test replacements without making actual changes
-- **Undo Functionality**: Reverse changes if needed
-- **WordPress-aware**: Handles serialized data and WordPress-specific content safely
+- **Connection testing** with friendly error messages and URL-encoded credentials
+- **Multi-table search** across WordPress core tables and custom post types
+- **Search modes**: users, posts, pages, WooCommerce orders/coupons, custom post types, general cross-table search
+- **Search & Replace**: multi-table find/replace with highlighted preview, full-width tables, dry-run, selective row/table replacement, automatic backup and undo, and safe handling of PHP serialized data and JSON
+- **Export**: JSON/CSV, batch processing, filtered exports, optional metadata, timestamped files in `exports/`
+- **UX**: Rich colourised output, progress indicators, Inquirer menus, full terminal-width tables
 
-For detailed usage instructions, see [SEARCH_REPLACE_README.md](SEARCH_REPLACE_README.md)
+Supported data: WordPress users (with metadata), posts/pages, WooCommerce orders/coupons, custom post types, any WordPress table.
 
-### Export Features
-- **Multiple Formats**: Export data in JSON or CSV format
-- **Batch Processing**: Handle large datasets efficiently with batch processing
-- **Filtered Exports**: Export only the data that matches your search criteria
-- **Metadata Inclusion**: Option to include WordPress metadata in exports
-- **Organized Output**: Exports are saved in timestamped files in the `exports/` directory
+## Prerequisites
 
-### User Experience Features
-- **Intuitive Menus**: Clear, numbered menu options with descriptive labels
-- **Rich Console Output**: Colorized output with icons and formatting for better readability
-- **Progress Indicators**: Real-time feedback during long-running operations
-- **Error Handling**: Graceful error handling with helpful error messages
-- **Full-Width Tables**: Tables automatically expand to use full terminal width for maximum content visibility
+- Python 3.8+ and pip
+- MySQL/MariaDB credentials for the target WordPress database
+- macOS, Linux, or Windows
 
-### Supported Data Types
-- WordPress Users (with metadata)
-- WordPress Posts and Pages
-- WooCommerce Orders
-- WooCommerce Coupons
-- Custom Post Types
-- Any WordPress table data
+## Install
 
-## 📋 Prerequisites
+### Quick start (macOS/Linux)
 
-- **Python**: Python 3.6 or higher
-- **pip**: Python package installer
-- **Database Access**: MySQL/MariaDB database credentials for your WordPress site
-- **Operating System**: macOS, Linux, or Windows (with appropriate Python installation)
+```bash
+git clone https://github.com/kinged007/wordpress-db-explorer.git
+cd wordpress-db-explorer
+cp sample.env .env   # then edit .env with DB credentials
+chmod +x run.sh
+./run.sh
+```
 
-## 🛠️ Installation & Setup
+`run.sh` creates a venv, installs dependencies, and launches the app.
 
-### Method 1: Using the run.sh Script (Recommended for macOS/Linux)
+### Manual setup (all platforms)
 
-1. **Clone or download** this repository to your local machine
+```bash
+git clone https://github.com/kinged007/wordpress-db-explorer.git
+cd wordpress-db-explorer
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+cp sample.env .env        # edit with DB credentials
+python main.py
+```
 
-2. **Navigate** to the project directory:
-   ```bash
-   cd wordpress-db-explorer
-   ```
+### Environment
 
-3. **Copy the environment file** and configure your database settings:
-   ```bash
-   cp sample.env .env
-   ```
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DB_HOST` | Database host | `localhost` |
+| `DB_PORT` | Database port | `3306` |
+| `DB_USER` | Database user | `wp_user` |
+| `DB_PASSWORD` | Database password | `your_password` |
+| `DB_NAME` | WordPress database | `wordpress_db` |
+| `TABLE_PREFIX` | Table prefix | `wp_` |
 
-4. **Edit the .env file** with your WordPress database credentials:
-   ```
-   DB_HOST=your_database_host
-   DB_PORT=3306
-   DB_USER=your_database_username
-   DB_PASSWORD=your_database_password
-   DB_NAME=your_wordpress_database_name
-   TABLE_PREFIX=wp_
-   ```
+Do not commit `.env` — it is gitignored. See `sample.env` for the template.
 
-5. **Make the script executable** (if needed):
-   ```bash
-   chmod +x run.sh
-   ```
+## Usage
 
-6. **Run the application**:
-   ```bash
-   ./run.sh
-   ```
-
-The script will automatically:
-- Detect Python 3 or Python installation
-- Create a virtual environment (if it doesn't exist)
-- Install all required dependencies
-- Activate the virtual environment
-- Launch the application
-
-### Method 2: Manual Setup (All Operating Systems)
-
-If you prefer not to use the run.sh script or are on Windows, follow these steps:
-
-1. **Clone or download** this repository
-
-2. **Navigate** to the project directory:
-   ```bash
-   cd wordpress-db-explorer
-   ```
-
-3. **Create a virtual environment**:
-   ```bash
-   # On macOS/Linux:
-   python3 -m venv venv
-   
-   # On Windows:
-   python -m venv venv
-   ```
-
-4. **Activate the virtual environment**:
-   ```bash
-   # On macOS/Linux:
-   source venv/bin/activate
-   
-   # On Windows:
-   venv\Scripts\activate
-   ```
-
-5. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-6. **Configure environment variables**:
-   ```bash
-   cp sample.env .env
-   ```
-   
-   Edit the `.env` file with your database credentials (same as Method 1, step 4)
-
-7. **Run the application**:
-   ```bash
-   python main.py
-   ```
-
-## 🎯 Usage
-
-### Starting the Application
-
-When you run the application, you'll see a main menu with these options:
+Launch and pick from the main menu:
 
 ```
 Select an option:
-❯ 1. Test DB Connection
+  1. Test DB Connection
   2. Search
   3. Search & Replace
   4. Export
   Exit
 ```
 
-### 1. Test DB Connection
+- **Test DB Connection** — verify credentials before other operations.
+- **Search** — `Search Users` / `Orders` / `Coupons` / `Posts` / `Pages` / `Custom Post Type` / `General Search`. Each supports field-level filtering and metadata search.
+- **Search & Replace** — guided workflow: configure search term, select tables, find matches, preview with highlighted terms, configure row selection, set replacement text, dry-run, execute (with backup), and undo. See [SEARCH_REPLACE_README.md](SEARCH_REPLACE_README.md).
+- **Export** — Users, WooCommerce Orders/Coupons, Posts, Pages, or any Custom Post Type to `exports/` as JSON or CSV.
 
-Always start by testing your database connection to ensure your credentials are correct.
+## How it is tested
 
-### 2. Search
-
-The search menu offers multiple search options:
-
-```
-🔍 Select search type:
-❯ 1. Search Users
-  2. Search Orders
-  3. Search Coupons
-  4. Search Posts
-  5. Search Pages
-  6. Search Custom Post Type
-  7. General Search
-  Back
-```
-
-- **1. Search Users**: Find users by username, email, display name, or any user field
-  - Search by user fields (username, email, display_name, etc.)
-  - Search by user meta data (custom fields)
-- **2. Search Orders**: Find WooCommerce orders by status, customer, date range
-  - Search by order fields (status, customer info, dates)
-  - Search by order meta data (custom order fields)
-- **3. Search Coupons**: Find WooCommerce coupons by code, type, usage
-  - Search by coupon fields (code, type, amount, usage)
-  - Search by coupon meta data (custom coupon fields)
-- **4. Search Posts**: Find WordPress blog posts by title, content, author
-  - Search by post fields (title, content, author, status)
-  - Search by post meta data (custom fields)
-- **5. Search Pages**: Find WordPress pages by title, content
-  - Search by page fields (title, content, status)
-  - Search by page meta data (custom fields)
-- **6. Search Custom Post Type**: Search any custom post type in your database
-- **7. General Search**: Perform broad searches across any table
-
-### 3. Search & Replace
-
-Safely find and replace text across your WordPress database with a step-by-step workflow:
-
-```
-🔄 Search and Replace Tool
-📊 Current Configuration:
-  • Search Term: 'example.com'
-  • Tables Selected: 3
-  • Total Matches Found: 45
-  • Replace With: 'newdomain.com'
-
-❯ Configure Search Term
-  Select Tables
-  Find Matches
-  Preview Matches
-  Configure Row Selection
-  Set Replace Text
-  Execute Replace (Dry Run)
-  Execute Replace
-  Undo Last Operation
-  Exit
-```
-
-**Key Features:**
-- **Configure Search Term**: Set the text you want to find
-- **Select Tables**: Choose which database tables to search
-- **Find Matches**: Search for your term across selected tables
-- **Preview Matches**: Review found matches with highlighted search terms and full-width table display
-- **Configure Row Selection**: Fine-tune which specific rows to include/exclude
-- **Set Replace Text**: Define the replacement text
-- **Execute Replace (Dry Run)**: Test the operation safely without making changes
-- **Execute Replace**: Apply the changes with automatic backup creation
-- **Undo Last Operation**: Reverse changes if needed
-
-See [SEARCH_REPLACE_README.md](SEARCH_REPLACE_README.md) for detailed instructions.
-
-### 4. Export
-
-Export filtered data in JSON or CSV format:
-
-```
-📤 Select data to export:
-❯ Users
-  WooCommerce Orders
-  WooCommerce Coupons
-  WordPress Posts
-  WordPress Pages
-  Custom Post Type
-  Back
-```
-
-- **Users**: Export user data with optional metadata
-- **WooCommerce Orders**: Export order data with customer information
-- **WooCommerce Coupons**: Export coupon data with usage statistics
-- **WordPress Posts**: Export blog post content with metadata
-- **WordPress Pages**: Export page content with metadata
-- **Custom Post Type**: Export any custom post type data
-
-All exports are saved in the `exports/` directory with timestamps.
-
-## 🔧 Configuration
-
-### Environment Variables
-
-The application uses a `.env` file for configuration:
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DB_HOST` | Database server hostname | `localhost` or `127.0.0.1` |
-| `DB_PORT` | Database server port | `3306` |
-| `DB_USER` | Database username | `wp_user` |
-| `DB_PASSWORD` | Database password | `your_password` |
-| `DB_NAME` | WordPress database name | `wordpress_db` |
-| `TABLE_PREFIX` | WordPress table prefix | `wp_` |
-
-**Important**: Always ensure your `.env` file is not committed to version control as it contains sensitive database credentials.
-
-### Upgrading Dependencies
-
-To upgrade the application dependencies:
+Pytest suite (21 tests) covering serialized-data handling, JSON replacement, length fixing, session management, backup creation, dry-run safety, and error handling. Run via:
 
 ```bash
-# Using run.sh script:
-./run.sh --upgrade
+./run_tests.sh              # all tests
+./run_tests.sh --coverage   # with HTML + terminal coverage
+./run_tests.sh --unit       # unit only
+pytest tests/ -v            # direct
 
-# Manual method:
-source venv/bin/activate  # or venv\Scripts\activate on Windows
-pip install --upgrade -r requirements.txt
+# Lint and type checks (as in CI)
+ruff check src/ tests/
+mypy src/ --ignore-missing-imports
 ```
 
-## 🧪 Testing
+CI runs on every push and PR to `main` via [ci.yml](.github/workflows/ci.yml): `pytest`, `ruff`, and `mypy`.
 
-The project includes a comprehensive test suite using pytest.
-
-### Running Tests
-
-```bash
-# Run all tests
-./run_tests.sh
-
-# Run tests with coverage report
-./run_tests.sh --coverage
-
-# Run only unit tests
-./run_tests.sh --unit
-
-# Run only integration tests
-./run_tests.sh --integration
-
-# Manual pytest execution
-source venv/bin/activate
-pytest tests/ -v
-```
-
-### Test Structure
-
-- **Unit Tests**: Test individual functions and components
-- **Integration Tests**: Test component interactions
-- **Coverage Reports**: HTML and terminal coverage reports available
-
-For detailed test documentation, see [tests/README.md](tests/README.md).
-
-## 📁 Project Structure
+## Project structure
 
 ```
 wordpress-db-explorer/
-├── main.py              # Application entry point
-├── run.sh               # Setup and launch script (macOS/Linux)
-├── run_tests.sh         # Test runner script
-├── requirements.txt     # Python dependencies
-├── pyproject.toml       # Modern Python project configuration (pytest, coverage)
-├── sample.env           # Environment template
-├── .env                 # Your database configuration (create this)
-├── exports/             # Export output directory
+├── main.py              # entry point
+├── run.sh               # setup + launch (macOS/Linux)
+├── run_tests.sh         # test runner
+├── pyproject.toml       # pytest / coverage config
+├── requirements.txt
+├── sample.env           # env template
 ├── src/
-│   ├── db_utils.py      # Database connection utilities
-│   ├── search_utils.py  # Search functionality
-│   ├── search_replace.py # Search and replace functionality
-│   ├── export_menu.py   # Export menu interface
-│   └── export_utils.py  # Export functionality
-├── tests/               # Test suite containing unit and integration tests
-└── venv/                # Virtual environment (auto-created)
+│   ├── db_utils.py
+│   ├── search_utils.py
+│   ├── search_replace.py
+│   ├── export_menu.py
+│   └── export_utils.py
+├── tests/               # pytest suite
+└── venv/                # auto-created
 ```
 
-## 🔍 Dependencies
+## Troubleshooting
 
-- **SQLAlchemy**: Database ORM and connection management
-- **rich**: Beautiful terminal output and formatting
-- **inquirer**: Interactive command-line menus
-- **python-dotenv**: Environment variable management
-- **pymysql**: MySQL database connector
+- **Database connection failed** — verify `.env` credentials, that MySQL is running, and the user has permissions.
+- **Python/pip not found** — install Python 3.8+ from python.org and ensure it is on PATH.
+- **Permission denied on run.sh** — `chmod +x run.sh`.
+- **Venv issues** — delete `venv/` and re-run setup.
 
-## 🚨 Troubleshooting
+## License
 
-### Common Issues
+MIT — see [LICENSE](LICENSE). Copyright 2026 kinged007 / Joshua Barnard.
 
-1. **Database Connection Failed**
-   - Verify your `.env` file has correct database credentials
-   - Ensure your database server is running
-   - Check if your database user has proper permissions
+## Contributing
 
-2. **Python/pip Not Found**
-   - Install Python 3.6+ from [python.org](https://python.org)
-   - Ensure Python is added to your system PATH
-
-3. **Permission Denied on run.sh**
-   ```bash
-   chmod +x run.sh
-   ```
-
-4. **Virtual Environment Issues**
-   - Delete the `venv` folder and run the setup again
-   - Ensure you have sufficient disk space
-
-### Getting Help
-
-If you encounter issues:
-1. Check that all prerequisites are installed
-2. Verify your database credentials in the `.env` file
-3. Test the database connection using option 1 in the main menu
-4. Ensure your WordPress database is accessible from your machine
-
-## 📝 License
-
-This project is open source. Please check the license file for details.
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit issues, feature requests, or pull requests.
+Issues and PRs welcome. Please open PRs against `main` from a feature branch; do not push directly to the default branch.

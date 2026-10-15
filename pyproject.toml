@@ -65,3 +65,18 @@ exclude_lines = [
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
 ]
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501", "F841", "E712"]
+
+[tool.mypy]
+python_version = "3.8"
+ignore_missing_imports = true
+warn_return_any = false
+warn_unused_configs = false
+ignore_errors = false

@@ -8,18 +8,17 @@ This module tests various aspects of the search and replace feature including:
 """
 
 import json
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from search_replace import (
-    _safe_replace_in_serialized_data,
-    _is_php_serialized,
-    _is_json_data,
-    _replace_in_php_serialized,
-    _replace_in_json_data,
+    SearchReplaceSession,
     _fix_php_serialized_lengths,
-    SearchReplaceSession
+    _is_json_data,
+    _is_php_serialized,
+    _safe_replace_in_serialized_data,
 )
+
 
 class TestSearchReplace:
     """Test cases for search and replace functionality"""
@@ -201,8 +200,9 @@ class TestSearchReplaceSession:
     @pytest.mark.unit
     def test_dry_run_safety(self):
         """Test that dry run mode never executes database changes"""
-        from search_replace import _execute_replace
         import inspect
+
+        from search_replace import _execute_replace
 
         # Get function signature
         sig = inspect.signature(_execute_replace)

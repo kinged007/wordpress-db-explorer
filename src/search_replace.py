@@ -1,16 +1,16 @@
-import os
-import json
-import re
 import datetime
+import json
+import os
+import re
 from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
+from typing import List, Optional
+
 import inquirer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
-from sqlalchemy import inspect
 from sqlalchemy.sql import text
-from dotenv import load_dotenv
 
 try:
     import phpserialize
@@ -18,7 +18,7 @@ try:
 except ImportError:
     PHPSERIALIZE_AVAILABLE = False
 
-from src.db_utils import get_db_engine, get_db_inspector, check_db_connection_with_friendly_error
+from src.db_utils import check_db_connection_with_friendly_error, get_db_engine, get_db_inspector
 
 console = Console()
 load_dotenv(override=True)
@@ -129,7 +129,7 @@ def _get_search_term(session: SearchReplaceSession) -> bool:
     try:
         # Use Rich's input with default value
         default_text = session.search_term if session.search_term else ""
-        prompt_text = f"Enter the text to search for"
+        prompt_text = "Enter the text to search for"
         if default_text:
             prompt_text += f" [default: {default_text}]"
         prompt_text += ": "
@@ -1090,7 +1090,7 @@ def _get_replace_term(session: SearchReplaceSession) -> bool:
     try:
         # Use Rich's input with default value
         default_text = session.replace_term if session.replace_term else ""
-        prompt_text = f"Enter the replacement text"
+        prompt_text = "Enter the replacement text"
         if default_text:
             prompt_text += f" [default: {default_text}]"
         prompt_text += ": "
@@ -1638,7 +1638,7 @@ def _undo_last_operation():
         return
 
     # Show confirmation
-    console.print(f"\n📊 Undo Operation Summary:", style="bold blue")
+    console.print("\n📊 Undo Operation Summary:", style="bold blue")
     console.print(f"  Backup File: {backup_file.name}", style="dim")
     console.print(f"  Original Search: '{backup_data.get('search_term', 'Unknown')}'", style="dim")
     console.print(f"  Changes to Undo: {len(changes)}", style="dim")

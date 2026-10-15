@@ -5,6 +5,7 @@ Test module for improved error handling in search and replace
 import pytest
 from rich.console import Console
 
+
 class TestErrorHandling:
     """Test cases for error handling functionality"""
 

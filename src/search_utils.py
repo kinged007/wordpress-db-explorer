@@ -1,13 +1,13 @@
-import os
-import inquirer
 import datetime
+import os
+
+import inquirer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
-from sqlalchemy import inspect
 from sqlalchemy.sql import text
-from dotenv import load_dotenv
 
-from src.db_utils import get_db_engine, get_db_inspector, check_db_connection_with_friendly_error
+from src.db_utils import check_db_connection_with_friendly_error, get_db_engine, get_db_inspector
 
 console = Console()
 
@@ -510,7 +510,7 @@ def _get_match_type(term_type):
 def display_user_results(column_names, rows):
     """Helper function to display user search results in a table"""
     results_table = Table(
-        title=f"👤 User Search Results (showing up to 100 rows)",
+        title="👤 User Search Results (showing up to 100 rows)",
         expand=True,  # Use full terminal width
         show_lines=True
     )
@@ -584,7 +584,7 @@ def search_posts(post_type, export_mode=False, display_name=None):
             field_questions = [
                 inquirer.List(
                     "filter_field",
-                    message=f"Select field to filter by",
+                    message="Select field to filter by",
                     choices=[
                         "All fields (general search)",
                         "post_title", 
