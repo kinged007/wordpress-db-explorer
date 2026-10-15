@@ -9,9 +9,6 @@
 
 A CLI for exploring, searching, and safely search-replacing across WordPress/MySQL databases — serialized-data and WooCommerce aware. Handles PHP serialized arrays, JSON, and WordPress-specific content with dry-run, preview, and undo safety.
 
-![Demo](./docs/screenshot.png)
-*Screenshot to be added — the interactive menu renders with Rich tables and Inquirer prompts. See [SEARCH_REPLACE_README.md](SEARCH_REPLACE_README.md) for workflow detail.*
-
 ## Features
 
 - **Connection testing** with friendly error messages and URL-encoded credentials
