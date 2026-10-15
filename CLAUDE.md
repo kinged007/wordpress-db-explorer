@@ -35,7 +35,7 @@ CI (`.github/workflows/ci.yml`) runs `pytest`, `ruff check`, and `mypy` on every
 - Do not introduce new dependencies without need.
 - Do not commit `.env`, `venv/`, `exports/`, `backups/`, or other local artefacts (see `.gitignore`).
 - Preserve the serialized-data safety logic in `src/search_replace.py` — it is the core correctness concern.
-- Do not publish anything derived from private `tenantflex` org repos. See the profile plan repo `docs/03-tenantflex.md` for context.
+- Do not commit secrets (API keys, tokens, .env). Only `.env.example` belongs in the repo.
 
 ## Branch and PR workflow
 
